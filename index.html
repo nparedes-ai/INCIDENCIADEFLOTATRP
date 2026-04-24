@@ -10,567 +10,422 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'DM Sans', system-ui, sans-serif; background: #F4F6F7; min-height: 100vh; }
-    input:focus, select:focus, textarea:focus { border-color: #1B4F72 !important; box-shadow: 0 0 0 3px rgba(27,79,114,0.08); outline: none; }
-    @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-    @keyframes slideIn { from{transform:translateX(100px);opacity:0} to{transform:translateX(0);opacity:1} }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-    button { font-family: inherit; }
-    select { font-family: inherit; }
-    .fade-in { animation: fadeIn .3s ease; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'DM Sans',system-ui,sans-serif;background:#F4F6F7;min-height:100vh}
+    input:focus,select:focus,textarea:focus{border-color:#1B4F72!important;box-shadow:0 0 0 3px rgba(27,79,114,.08);outline:none}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .fi{animation:fadeIn .3s ease}
+    button,select{font-family:inherit}
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect, useCallback, useMemo } = React;
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useMemo}=React;
 
-    // ═══════════════════════════════════════════
-    // CONSTANTS
-    // ═══════════════════════════════════════════
-    const INCIDENT_TYPES = {
-      panne: { label: "Panne", icon: "⚙️", color: "#E67E22", options: ["Alternador","Embrague","Dirección","Correas","Fuga de líquidos","Pérdida de potencia","Temperatura"] },
-      siniestro: { label: "Siniestro", icon: "💥", color: "#E74C3C", zones: ["Espejo derecho","Espejo izquierdo","Parachoque delantero","Parachoque trasero","Puerta piloto","Puerta copiloto","Puerta corredera","Portalón","Foco delantero izquierdo","Foco delantero derecho","Foco trasero izquierdo","Foco trasero derecho","Capot","Tapabarro","Choque parte inferior del vehículo"] },
-      luces: { label: "Luces", icon: "💡", color: "#F1C40F", options: ["Luces delanteras","Luces traseras"] },
-      vulcanizacion: { label: "Vulcanización", icon: "🛞", color: "#3498DB", options: ["Pinchazo","Neumático rajado","Golpe o deformación en la llanta"] },
-    };
+const TYPES={
+  panne:{label:"Panne",icon:"⚙️",color:"#E67E22",options:["Alternador","Embrague","Dirección","Correas","Fuga de líquidos","Pérdida de potencia","Temperatura"]},
+  siniestro:{label:"Siniestro",icon:"💥",color:"#E74C3C",zones:["Espejo derecho","Espejo izquierdo","Parachoque delantero","Parachoque trasero","Puerta piloto","Puerta copiloto","Puerta corredera","Portalón","Foco delantero izquierdo","Foco delantero derecho","Foco trasero izquierdo","Foco trasero derecho","Capot","Tapabarro","Choque parte inferior del vehículo"]},
+  luces:{label:"Luces",icon:"💡",color:"#F1C40F",options:["Luces delanteras","Luces traseras"]},
+  vulcanizacion:{label:"Vulcanización",icon:"🛞",color:"#3498DB",options:["Pinchazo","Neumático rajado","Golpe o deformación en la llanta"]},
+};
 
-    // localStorage keys
-    const LS_URL = "fleet_gsheet_url";
-    const LS_PASS = "fleet_admin_pass";
+const ESTADOS=[
+  {id:"Abierto",color:"#E74C3C",icon:"🔴"},
+  {id:"En diagnóstico",color:"#E67E22",icon:"🔍"},
+  {id:"En reparación",color:"#F1C40F",icon:"🔧"},
+  {id:"Esperando repuesto",color:"#8E44AD",icon:"📦"},
+  {id:"Resuelto",color:"#27AE60",icon:"✅"},
+];
 
-    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
-    function fmtDate(d) { if (!d) return ""; try { return new Date(d).toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit",year:"numeric"}); } catch { return d; } }
+const SHEET_API="https://script.google.com/macros/s/AKfycbzFUbbGfAbyH56lEcFBj8GvE4phc2i2yqpWfAN53GZDhO8Yii9NM9AyD5jRcx3ZkPRYbQ/exec";
+const LS_PASS="fleet_admin_pass";
 
-    // ─── Google Sheets API ───
-    async function gGet(url, action) {
-      const r = await fetch(url + "?action=" + action);
-      return await r.json();
-    }
-    async function gPost(url, body) {
-      const r = await fetch(url, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body) });
-      return await r.json();
-    }
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function fmtDate(d){if(!d)return"";try{const x=new Date(d);return isNaN(x)? d : x.toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit",year:"numeric"})}catch{return d}}
+function fmtDateTime(d){if(!d)return"";try{const x=new Date(d);return isNaN(x)?d:x.toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}catch{return d}}
 
-    // ═══════════════════════════════════════════
-    // UI PRIMITIVES
-    // ═══════════════════════════════════════════
-    function Badge({children, color, small}) {
-      return <span style={{ display:"inline-flex",alignItems:"center",gap:4, background:color+"18",color,border:"1px solid "+color+"40", borderRadius:6,padding:small?"2px 8px":"4px 12px", fontSize:small?11:12,fontWeight:600,letterSpacing:0.3,whiteSpace:"nowrap" }}>{children}</span>;
-    }
+async function gGet(url,action,params=""){const r=await fetch(url+"?action="+action+params);return await r.json()}
+async function gPost(url,body){const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)});return await r.json()}
 
-    function Btn({children, onClick, variant="primary", disabled, style:sx, small}) {
-      const base = { border:"none",borderRadius:8,cursor:disabled?"not-allowed":"pointer", fontWeight:600,letterSpacing:0.3,transition:"all .15s", padding:small?"6px 14px":"10px 20px",fontSize:small?12:13, opacity:disabled?0.5:1,display:"inline-flex",alignItems:"center",gap:6 };
-      const vars = { primary:{background:"#1B4F72",color:"#fff"}, secondary:{background:"#ECF0F1",color:"#2C3E50",border:"1px solid #BDC3C7"}, danger:{background:"#E74C3C",color:"#fff"}, ghost:{background:"transparent",color:"#1B4F72",padding:small?"6px 10px":"10px 14px"} };
-      return <button onClick={onClick} disabled={disabled} style={{...base,...vars[variant],...sx}}>{children}</button>;
-    }
+// ─── UI ───
+function Badge({children,color,small}){return<span style={{display:"inline-flex",alignItems:"center",gap:4,background:color+"18",color,border:"1px solid "+color+"40",borderRadius:6,padding:small?"2px 8px":"4px 12px",fontSize:small?11:12,fontWeight:600,letterSpacing:.3,whiteSpace:"nowrap"}}>{children}</span>}
 
-    function Input({label, ...props}) {
-      return (
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {label && <label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:0.5,textTransform:"uppercase"}}>{label}</label>}
-          <input {...props} style={{ padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14, fontFamily:"inherit",background:"#FDFEFE",transition:"border .15s",...(props.style||{}) }} />
+function StatusBadge({estado}){const s=ESTADOS.find(x=>x.id===estado)||ESTADOS[0];return<Badge color={s.color}>{s.icon} {s.id}</Badge>}
+
+function Btn({children,onClick,variant="primary",disabled,style:sx,small}){
+  const base={border:"none",borderRadius:8,cursor:disabled?"not-allowed":"pointer",fontWeight:600,letterSpacing:.3,transition:"all .15s",padding:small?"6px 14px":"10px 20px",fontSize:small?12:13,opacity:disabled?.5:1,display:"inline-flex",alignItems:"center",gap:6};
+  const v={primary:{background:"#1B4F72",color:"#fff"},secondary:{background:"#ECF0F1",color:"#2C3E50",border:"1px solid #BDC3C7"},danger:{background:"#E74C3C",color:"#fff"},ghost:{background:"transparent",color:"#1B4F72",padding:small?"6px 10px":"10px 14px"}};
+  return<button onClick={onClick} disabled={disabled} style={{...base,...v[variant],...sx}}>{children}</button>
+}
+
+function Input({label,...props}){return(<div style={{display:"flex",flexDirection:"column",gap:4}}>{label&&<label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:.5,textTransform:"uppercase"}}>{label}</label>}<input {...props} style={{padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14,fontFamily:"inherit",background:"#FDFEFE",transition:"border .15s",...(props.style||{})}}/></div>)}
+
+function Sel({label,children,...props}){return(<div style={{display:"flex",flexDirection:"column",gap:4}}>{label&&<label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:.5,textTransform:"uppercase"}}>{label}</label>}<select {...props} style={{padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14,fontFamily:"inherit",background:"#FDFEFE",cursor:"pointer",...(props.style||{})}}>{children}</select></div>)}
+
+function TArea({label,...props}){return(<div style={{display:"flex",flexDirection:"column",gap:4}}>{label&&<label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:.5,textTransform:"uppercase"}}>{label}</label>}<textarea {...props} rows={3} style={{padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14,fontFamily:"inherit",resize:"vertical",background:"#FDFEFE"}}/></div>)}
+
+function MultiCheck({options,selected,onChange}){const toggle=opt=>onChange(selected.includes(opt)?selected.filter(o=>o!==opt):[...selected,opt]);return(<div style={{display:"flex",flexWrap:"wrap",gap:6}}>{options.map(opt=>{const on=selected.includes(opt);return<button key={opt} onClick={()=>toggle(opt)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:500,cursor:"pointer",border:on?"1.5px solid #1B4F72":"1.5px solid #D5DBDB",background:on?"rgba(27,79,114,.08)":"#FDFEFE",color:on?"#1B4F72":"#5D6D7E",transition:"all .15s"}}>{on?"✓ ":""}{opt}</button>})}</div>)}
+
+function Spinner({text}){return<div style={{display:"flex",alignItems:"center",gap:10,padding:12,fontSize:13,color:"#7F8C8D"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>{text}</div>}
+
+// ═══════════════════════════════════
+// TICKET FORM
+// ═══════════════════════════════════
+function TicketForm({onSave,editing,onCancel,config,saving}){
+  const blank={supervisor:"",conductor:"",ppu:"",fecha:new Date().toISOString().slice(0,10),tipo:"",subtipo:"",lugarSiniestro:"",zonasSiniestro:[],observaciones:""};
+  const[form,setForm]=useState(editing||blank);
+  useEffect(()=>{if(editing)setForm(editing)},[editing]);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const ppus=config?.ppuList||[];const drivers=config?.conductores||[];
+  const valid=form.supervisor&&form.conductor&&form.ppu&&form.fecha&&form.tipo&&(form.tipo==="siniestro"?(form.zonasSiniestro?.length>0):!!form.subtipo);
+  const submit=()=>{onSave({...form,id:form.id||uid()});if(!editing)setForm(blank)};
+  const noLists=ppus.length===0||drivers.length===0;
+
+  return(
+    <div className="fi" style={{background:"#fff",borderRadius:14,padding:28,border:"1px solid #E5E8EB",boxShadow:"0 2px 12px rgba(0,0,0,.04)"}}>
+      <h2 style={{margin:"0 0 20px",fontSize:18,color:"#1B4F72"}}>{editing?"✏️ Editar Incidencia":"📋 Nuevo Ticket de Incidencia"}</h2>
+      {noLists&&<div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:10,padding:16,marginBottom:18,fontSize:13,color:"#7D6608"}}>⚠️ <strong>Faltan datos.</strong> Agrega conductores y patentes en la hoja "Config".</div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Input label="Nombre del supervisor" placeholder="Escriba el nombre..." value={form.supervisor} onChange={e=>set("supervisor",e.target.value)}/>
+        <Sel label="Conductor" value={form.conductor} onChange={e=>set("conductor",e.target.value)}><option value="">Seleccionar...</option>{drivers.map(c=><option key={c} value={c}>{c}</option>)}</Sel>
+        <Sel label="PPU (Patente)" value={form.ppu} onChange={e=>set("ppu",e.target.value)}><option value="">Seleccionar...</option>{ppus.map(p=><option key={p} value={p}>{p}</option>)}</Sel>
+        <Input label="Fecha" type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/>
+        <Sel label="Tipo de Incidencia" value={form.tipo} onChange={e=>{set("tipo",e.target.value);set("subtipo","");set("zonasSiniestro",[]);set("lugarSiniestro","")}} style={{gridColumn:"1/-1"}}><option value="">Seleccionar...</option>{Object.entries(TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</Sel>
+      </div>
+      {form.tipo&&form.tipo!=="siniestro"&&<div style={{marginTop:16}}><Sel label={"Detalle de "+(TYPES[form.tipo]?.label||"")} value={form.subtipo} onChange={e=>set("subtipo",e.target.value)}><option value="">Seleccionar...</option>{(TYPES[form.tipo]?.options||[]).map(o=><option key={o} value={o}>{o}</option>)}</Sel></div>}
+      {form.tipo==="siniestro"&&<div style={{marginTop:16,display:"flex",flexDirection:"column",gap:14}}><Input label="Lugar exacto" placeholder="Ej: Av. Providencia esquina Los Leones" value={form.lugarSiniestro} onChange={e=>set("lugarSiniestro",e.target.value)}/><div><label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:.5,textTransform:"uppercase",marginBottom:6,display:"block"}}>Zonas afectadas</label><MultiCheck options={TYPES.siniestro.zones} selected={form.zonasSiniestro||[]} onChange={v=>set("zonasSiniestro",v)}/></div></div>}
+      <div style={{marginTop:16}}><TArea label="Observaciones" placeholder="Detalles adicionales..." value={form.observaciones} onChange={e=>set("observaciones",e.target.value)}/></div>
+      <div style={{marginTop:20,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
+        {saving&&<Spinner text="Guardando..."/>}
+        {editing&&<Btn variant="secondary" onClick={onCancel}>Cancelar</Btn>}
+        <Btn disabled={!valid||saving} onClick={submit}>{editing?"Guardar":"Crear Ticket"}</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════
+// TICKET DETAIL + SEGUIMIENTO
+// ═══════════════════════════════════
+function TicketDetail({ticket,seguimiento,onBack,onAddSeg,loadingSeg}){
+  const tp=TYPES[ticket.tipo];
+  const[autor,setAutor]=useState("");
+  const[comentario,setComentario]=useState("");
+  const[nuevoEstado,setNuevoEstado]=useState(ticket.estado||"Abierto");
+  const[sending,setSending]=useState(false);
+
+  const submit=async()=>{
+    if(!comentario.trim())return;
+    setSending(true);
+    await onAddSeg({ticketId:ticket.id,fecha:new Date().toISOString(),autor,comentario,nuevoEstado});
+    setComentario("");setSending(false);
+  };
+
+  const timeline=(seguimiento||[]).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+
+  return(
+    <div className="fi">
+      <Btn variant="ghost" onClick={onBack} style={{marginBottom:16}}>← Volver a la lista</Btn>
+
+      {/* Ticket header */}
+      <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:28}}>{tp?.icon||"📋"}</span>
+          <span style={{fontSize:20,fontWeight:800,color:"#1B4F72"}}>{ticket.ppu}</span>
+          <Badge color={tp?.color||"#999"}>{tp?.label}</Badge>
+          <StatusBadge estado={ticket.estado||"Abierto"}/>
+          <span style={{fontSize:13,color:"#95A5A6",marginLeft:"auto"}}>{fmtDate(ticket.fecha)}</span>
         </div>
-      );
-    }
-
-    function Sel({label, children, ...props}) {
-      return (
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {label && <label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:0.5,textTransform:"uppercase"}}>{label}</label>}
-          <select {...props} style={{ padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14, fontFamily:"inherit",background:"#FDFEFE",cursor:"pointer",...(props.style||{}) }}>{children}</select>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 24px",fontSize:14,color:"#5D6D7E"}}>
+          <div><strong>Supervisor:</strong> {ticket.supervisor}</div>
+          <div><strong>Conductor:</strong> {ticket.conductor}</div>
+          {ticket.subtipo&&<div><strong>Detalle:</strong> {ticket.subtipo}</div>}
+          {ticket.lugarSiniestro&&<div><strong>Lugar:</strong> {ticket.lugarSiniestro}</div>}
         </div>
-      );
-    }
+        {ticket.zonasSiniestro?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:10}}>{ticket.zonasSiniestro.map(z=><Badge key={z} color="#E74C3C" small>{z}</Badge>)}</div>}
+        {ticket.observaciones&&<div style={{marginTop:10,fontSize:13,color:"#95A5A6",fontStyle:"italic"}}>"{ticket.observaciones}"</div>}
+      </div>
 
-    function TArea({label, ...props}) {
-      return (
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {label && <label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:0.5,textTransform:"uppercase"}}>{label}</label>}
-          <textarea {...props} rows={3} style={{ padding:"10px 14px",border:"1.5px solid #D5DBDB",borderRadius:8,fontSize:14, fontFamily:"inherit",resize:"vertical",background:"#FDFEFE" }} />
-        </div>
-      );
-    }
-
-    function MultiCheck({options, selected, onChange}) {
-      const toggle = opt => onChange(selected.includes(opt)?selected.filter(o=>o!==opt):[...selected,opt]);
-      return (
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {options.map(opt => { const on=selected.includes(opt); return (
-            <button key={opt} onClick={()=>toggle(opt)} style={{ padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:500,cursor:"pointer", border:on?"1.5px solid #1B4F72":"1.5px solid #D5DBDB", background:on?"rgba(27,79,114,0.08)":"#FDFEFE",color:on?"#1B4F72":"#5D6D7E",transition:"all .15s" }}>{on?"✓ ":""}{opt}</button>
-          );})}
-        </div>
-      );
-    }
-
-    function Spinner({text}) {
-      return <div style={{display:"flex",alignItems:"center",gap:10,padding:12,fontSize:13,color:"#7F8C8D"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>{text}</div>;
-    }
-
-    // ═══════════════════════════════════════════
-    // TICKET FORM
-    // ═══════════════════════════════════════════
-    function TicketForm({onSave, editing, onCancel, config, saving}) {
-      const blank = {supervisor:"",conductor:"",ppu:"",fecha:new Date().toISOString().slice(0,10),tipo:"",subtipo:"",lugarSiniestro:"",zonasSiniestro:[],observaciones:""};
-      const [form, setForm] = useState(editing||blank);
-      useEffect(()=>{if(editing)setForm(editing);},[editing]);
-
-      const set = (k,v) => setForm(f=>({...f,[k]:v}));
-      const ppus = config?.ppuList||[];
-      const drivers = config?.conductores||[];
-
-      const valid = form.supervisor && form.conductor && form.ppu && form.fecha && form.tipo && (
-        form.tipo==="siniestro"?(form.zonasSiniestro?.length>0):!!form.subtipo
-      );
-
-      const submit = () => {
-        const ticket = {...form, id: form.id||uid()};
-        onSave(ticket);
-        if(!editing) setForm(blank);
-      };
-
-      const noLists = ppus.length===0 || drivers.length===0;
-
-      return (
-        <div className="fade-in" style={{background:"#fff",borderRadius:14,padding:28,border:"1px solid #E5E8EB",boxShadow:"0 2px 12px rgba(0,0,0,0.04)"}}>
-          <h2 style={{margin:"0 0 20px",fontSize:18,color:"#1B4F72",display:"flex",alignItems:"center",gap:8}}>
-            {editing?"✏️ Editar Incidencia":"📋 Nuevo Ticket de Incidencia"}
-          </h2>
-          {noLists && (
-            <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:10,padding:16,marginBottom:18,fontSize:13,color:"#7D6608"}}>
-              ⚠️ <strong>Faltan datos.</strong> Agrega conductores y patentes en la hoja <strong>"Config"</strong> de tu Google Sheet, luego recarga.
-            </div>
-          )}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-            <Input label="Nombre del supervisor" placeholder="Escriba el nombre..." value={form.supervisor} onChange={e=>set("supervisor",e.target.value)} />
-            <Sel label="Conductor" value={form.conductor} onChange={e=>set("conductor",e.target.value)}>
-              <option value="">Seleccionar conductor...</option>
-              {drivers.map(c=><option key={c} value={c}>{c}</option>)}
-            </Sel>
-            <Sel label="PPU (Patente)" value={form.ppu} onChange={e=>set("ppu",e.target.value)}>
-              <option value="">Seleccionar PPU...</option>
-              {ppus.map(p=><option key={p} value={p}>{p}</option>)}
-            </Sel>
-            <Input label="Fecha" type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)} />
-            <Sel label="Tipo de Incidencia" value={form.tipo} onChange={e=>{set("tipo",e.target.value);set("subtipo","");set("zonasSiniestro",[]);set("lugarSiniestro","");}} style={{gridColumn:"1/-1"}}>
-              <option value="">Seleccionar tipo...</option>
-              {Object.entries(INCIDENT_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
-            </Sel>
-          </div>
-          {form.tipo && form.tipo!=="siniestro" && (
-            <div style={{marginTop:16}}>
-              <Sel label={"Detalle de "+(INCIDENT_TYPES[form.tipo]?.label||"")} value={form.subtipo} onChange={e=>set("subtipo",e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {(INCIDENT_TYPES[form.tipo]?.options||[]).map(o=><option key={o} value={o}>{o}</option>)}
-              </Sel>
-            </div>
-          )}
-          {form.tipo==="siniestro" && (
-            <div style={{marginTop:16,display:"flex",flexDirection:"column",gap:14}}>
-              <Input label="Lugar exacto del siniestro" placeholder="Ej: Av. Providencia esquina Los Leones" value={form.lugarSiniestro} onChange={e=>set("lugarSiniestro",e.target.value)} />
-              <div>
-                <label style={{fontSize:12,fontWeight:600,color:"#5D6D7E",letterSpacing:0.5,textTransform:"uppercase",marginBottom:6,display:"block"}}>Zonas afectadas (selección múltiple)</label>
-                <MultiCheck options={INCIDENT_TYPES.siniestro.zones} selected={form.zonasSiniestro||[]} onChange={v=>set("zonasSiniestro",v)} />
-              </div>
-            </div>
-          )}
-          <div style={{marginTop:16}}>
-            <TArea label="Observaciones adicionales" placeholder="Detalles adicionales..." value={form.observaciones} onChange={e=>set("observaciones",e.target.value)} />
-          </div>
-          <div style={{marginTop:20,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
-            {saving && <Spinner text="Guardando..." />}
-            {editing && <Btn variant="secondary" onClick={onCancel}>Cancelar</Btn>}
-            <Btn disabled={!valid||saving} onClick={submit}>{editing?"Guardar cambios":"Crear Ticket"}</Btn>
-          </div>
-        </div>
-      );
-    }
-
-    // ═══════════════════════════════════════════
-    // TICKET LIST
-    // ═══════════════════════════════════════════
-    function TicketList({tickets, onEdit, onDelete, loading}) {
-      const [search, setSearch] = useState("");
-      const filtered = tickets.filter(t=>
-        [t.supervisor,t.conductor,t.ppu,t.tipo,t.subtipo,t.lugarSiniestro,...(t.zonasSiniestro||[])].join(" ").toLowerCase().includes(search.toLowerCase())
-      );
-
-      if (loading) return <Spinner text="Cargando incidencias desde Google Sheets..." />;
-      if (tickets.length===0) return (
-        <div style={{textAlign:"center",padding:60,color:"#95A5A6"}}>
-          <div style={{fontSize:48,marginBottom:12}}>📭</div>
-          <p style={{fontSize:15}}>No hay incidencias registradas aún</p>
-        </div>
-      );
-
-      return (
-        <div>
-          <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
-            <Input placeholder="🔍 Buscar incidencias..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1}} />
-            <span style={{fontSize:13,color:"#7F8C8D",whiteSpace:"nowrap"}}>{filtered.length} de {tickets.length}</span>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {filtered.sort((a,b)=>String(b.id).localeCompare(String(a.id))).map(t=>{
-              const tp = INCIDENT_TYPES[t.tipo];
-              return (
-                <div key={t.id} className="fade-in" style={{background:"#fff",borderRadius:12,padding:"16px 20px",border:"1px solid #E5E8EB",display:"flex",alignItems:"flex-start",gap:14}}>
-                  <div style={{width:42,height:42,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,background:(tp?.color||"#999")+"15",flexShrink:0}}>{tp?.icon||"📋"}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
-                      <span style={{fontWeight:700,fontSize:14,color:"#2C3E50"}}>{t.ppu}</span>
-                      {tp && <Badge color={tp.color}>{tp.label}</Badge>}
-                      <span style={{fontSize:12,color:"#95A5A6"}}>{fmtDate(t.fecha)}</span>
-                    </div>
-                    <div style={{fontSize:13,color:"#5D6D7E",marginBottom:2}}>
-                      <strong>Supervisor:</strong> {t.supervisor} · <strong>Conductor:</strong> {t.conductor}
-                      {t.subtipo && <span> · <strong>Detalle:</strong> {t.subtipo}</span>}
-                    </div>
-                    {t.tipo==="siniestro" && (
-                      <div style={{fontSize:12,color:"#7F8C8D",marginTop:4}}>
-                        {t.lugarSiniestro && <div>📍 {t.lugarSiniestro}</div>}
-                        {t.zonasSiniestro?.length>0 && (
-                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>
-                            {t.zonasSiniestro.map(z=><Badge key={z} color="#E74C3C" small>{z}</Badge>)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {t.observaciones && <div style={{fontSize:12,color:"#95A5A6",marginTop:4,fontStyle:"italic"}}>"{t.observaciones}"</div>}
-                  </div>
-                  <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <Btn variant="ghost" small onClick={()=>onEdit(t)}>✏️</Btn>
-                    <Btn variant="ghost" small onClick={()=>onDelete(t.id)}>🗑️</Btn>
-                  </div>
+      {/* Timeline */}
+      <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB",marginBottom:20}}>
+        <h3 style={{margin:"0 0 20px",fontSize:16,color:"#1B4F72"}}>📋 Seguimiento del caso</h3>
+        {loadingSeg&&<Spinner text="Cargando seguimiento..."/>}
+        {!loadingSeg&&timeline.length===0&&<p style={{color:"#BDC3C7",fontSize:13}}>Sin registros de seguimiento.</p>}
+        <div style={{position:"relative",paddingLeft:28}}>
+          {/* Vertical line */}
+          {timeline.length>0&&<div style={{position:"absolute",left:9,top:6,bottom:6,width:2,background:"#E5E8EB"}}/>}
+          {timeline.map((s,i)=>{
+            const est=ESTADOS.find(x=>x.id===s.nuevoEstado);
+            return(
+              <div key={i} className="fi" style={{marginBottom:20,position:"relative"}}>
+                <div style={{position:"absolute",left:-22,top:4,width:14,height:14,borderRadius:7,background:est?.color||"#BDC3C7",border:"2px solid #fff",boxShadow:"0 0 0 2px "+(est?.color||"#BDC3C7")+"40"}}/>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                  <span style={{fontSize:12,color:"#95A5A6",fontWeight:600}}>{fmtDateTime(s.fecha)}</span>
+                  {s.nuevoEstado&&<Badge color={est?.color||"#999"} small>{est?.icon} {s.nuevoEstado}</Badge>}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    // ═══════════════════════════════════════════
-    // DASHBOARD
-    // ═══════════════════════════════════════════
-    function Dashboard({tickets}) {
-      const today = new Date().toISOString().slice(0,10);
-      const monthAgo = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-      const [desde,setDesde] = useState(monthAgo);
-      const [hasta,setHasta] = useState(today);
-
-      const filtered = tickets.filter(t=>t.fecha>=desde && t.fecha<=hasta);
-      const total = filtered.length;
-
-      const byType = useMemo(()=>{const m={};filtered.forEach(t=>{m[t.tipo]=(m[t.tipo]||0)+1;});return Object.entries(m).sort((a,b)=>b[1]-a[1]);},[filtered]);
-      const byDriver = useMemo(()=>{const m={};filtered.forEach(t=>{if(t.conductor)m[t.conductor]=(m[t.conductor]||0)+1;});return Object.entries(m).sort((a,b)=>b[1]-a[1]);},[filtered]);
-      const byPPU = useMemo(()=>{const m={};filtered.forEach(t=>{m[t.ppu]=(m[t.ppu]||0)+1;});return Object.entries(m).sort((a,b)=>b[1]-a[1]);},[filtered]);
-
-      const Bar = ({label,count,total:tot,color}) => {
-        const pct = tot>0?(count/tot*100):0;
-        return (
-          <div style={{marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}>
-              <span style={{fontWeight:600,color:"#2C3E50"}}>{label}</span>
-              <span style={{color:"#7F8C8D"}}>{count} ({pct.toFixed(1)}%)</span>
-            </div>
-            <div style={{height:10,background:"#ECF0F1",borderRadius:5,overflow:"hidden"}}>
-              <div style={{height:"100%",width:pct+"%",background:color||"#1B4F72",borderRadius:5,transition:"width .4s ease"}} />
-            </div>
-          </div>
-        );
-      };
-
-      const StatCard = ({icon,label,value,sub}) => (
-        <div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid #E5E8EB",textAlign:"center"}}>
-          <div style={{fontSize:28,marginBottom:6}}>{icon}</div>
-          <div style={{fontSize:28,fontWeight:800,color:"#1B4F72"}}>{value}</div>
-          <div style={{fontSize:12,color:"#7F8C8D",fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{label}</div>
-          {sub && <div style={{fontSize:11,color:"#95A5A6",marginTop:2}}>{sub}</div>}
-        </div>
-      );
-
-      const topType=byType[0]; const topDriver=byDriver[0];
-
-      return (
-        <div className="fade-in">
-          <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB",marginBottom:20}}>
-            <h3 style={{margin:"0 0 14px",fontSize:15,color:"#1B4F72"}}>📅 Período de análisis</h3>
-            <div style={{display:"flex",gap:16,alignItems:"end",flexWrap:"wrap"}}>
-              <Input label="Desde" type="date" value={desde} onChange={e=>setDesde(e.target.value)} />
-              <Input label="Hasta" type="date" value={hasta} onChange={e=>setHasta(e.target.value)} />
-              <span style={{fontSize:13,color:"#7F8C8D",paddingBottom:10}}>{total} incidencias en el período</span>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:14,marginBottom:20}}>
-            <StatCard icon="📊" label="Total" value={total} sub={fmtDate(desde)+" — "+fmtDate(hasta)} />
-            <StatCard icon="🔥" label="Tipo más común" value={topType?INCIDENT_TYPES[topType[0]]?.icon:"—"} sub={topType?(INCIDENT_TYPES[topType[0]]?.label+" ("+topType[1]+")"):"N/A"} />
-            <StatCard icon="👤" label="Más incidencias" value={topDriver?topDriver[1]:0} sub={topDriver?topDriver[0]:"N/A"} />
-            <StatCard icon="🚗" label="PPUs afectados" value={byPPU.length} />
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-            <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}>
-              <h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>📈 % por Tipo</h3>
-              {byType.length===0&&<p style={{color:"#95A5A6",fontSize:13}}>Sin datos</p>}
-              {byType.map(([tipo,cnt])=><Bar key={tipo} label={INCIDENT_TYPES[tipo]?.icon+" "+INCIDENT_TYPES[tipo]?.label} count={cnt} total={total} color={INCIDENT_TYPES[tipo]?.color} />)}
-            </div>
-            <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}>
-              <h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>👤 % por Conductor</h3>
-              {byDriver.length===0&&<p style={{color:"#95A5A6",fontSize:13}}>Sin datos</p>}
-              {byDriver.map(([n,cnt])=><Bar key={n} label={n} count={cnt} total={total} color="#1B4F72" />)}
-            </div>
-          </div>
-          <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB",marginTop:16}}>
-            <h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>🚗 % por PPU</h3>
-            {byPPU.length===0&&<p style={{color:"#95A5A6",fontSize:13}}>Sin datos</p>}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 24px"}}>
-              {byPPU.map(([p,cnt])=><Bar key={p} label={p} count={cnt} total={total} color="#2E86C1" />)}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ═══════════════════════════════════════════
-    // CONFIG (password-protected)
-    // ═══════════════════════════════════════════
-    function ConfigPanel({sheetUrl, setSheetUrl, adminPass, setAdminPass, onReload}) {
-      const [unlocked,setUnlocked] = useState(false);
-      const [passInput,setPassInput] = useState("");
-      const [confirmPass,setConfirmPass] = useState("");
-      const [passError,setPassError] = useState("");
-      const [urlInput,setUrlInput] = useState(sheetUrl||"");
-      const [saved,setSaved] = useState(false);
-      const isFirst = !adminPass;
-
-      const handleUnlock = () => {
-        if(isFirst) {
-          if(passInput.length<4){setPassError("Mínimo 4 caracteres");return;}
-          if(passInput!==confirmPass){setPassError("No coinciden");return;}
-          localStorage.setItem(LS_PASS,passInput);
-          setAdminPass(passInput);setUnlocked(true);setPassError("");
-        } else {
-          if(passInput===adminPass){setUnlocked(true);setPassError("");}
-          else setPassError("Contraseña incorrecta");
-        }
-      };
-      const kd = e=>{if(e.key==="Enter")handleUnlock();};
-
-      const saveUrl = () => {
-        const v=urlInput.trim();
-        localStorage.setItem(LS_URL,v);
-        setSheetUrl(v);setSaved(true);setTimeout(()=>setSaved(false),2000);
-        if(v)onReload(v);
-      };
-
-      if(!unlocked) return (
-        <div style={{maxWidth:420,margin:"40px auto",background:"#fff",borderRadius:14,padding:32,border:"1px solid #E5E8EB",boxShadow:"0 4px 20px rgba(0,0,0,0.04)"}}>
-          <div style={{textAlign:"center",marginBottom:24}}>
-            <div style={{fontSize:48,marginBottom:8}}>🔐</div>
-            <h2 style={{margin:0,fontSize:20,color:"#1B4F72"}}>{isFirst?"Crear contraseña":"Acceso restringido"}</h2>
-            <p style={{fontSize:13,color:"#95A5A6",marginTop:6,lineHeight:1.5}}>{isFirst?"Solo tú podrás modificar la configuración.":"Ingresa tu contraseña de administrador."}</p>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <Input label={isFirst?"Nueva contraseña":"Contraseña"} type="password" placeholder="••••••" value={passInput} onChange={e=>{setPassInput(e.target.value);setPassError("");}} onKeyDown={kd} />
-            {isFirst && <Input label="Confirmar" type="password" placeholder="••••••" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassError("");}} onKeyDown={kd} />}
-            {passError && <div style={{color:"#E74C3C",fontSize:13,fontWeight:600}}>❌ {passError}</div>}
-            <Btn onClick={handleUnlock} style={{width:"100%",justifyContent:"center"}}>{isFirst?"🔑 Crear y entrar":"🔓 Desbloquear"}</Btn>
-          </div>
-        </div>
-      );
-
-      return (
-        <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:20}}>
-          <div style={{background:"#D5F5E3",borderRadius:10,padding:"10px 18px",fontSize:13,color:"#1E8449",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-            🔓 Sesión admin activa
-            <Btn variant="ghost" small onClick={()=>{setUnlocked(false);setPassInput("");}} style={{marginLeft:"auto",color:"#7F8C8D"}}>Cerrar sesión</Btn>
-          </div>
-
-          <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB"}}>
-            <h3 style={{margin:"0 0 6px",fontSize:15,color:"#1B4F72"}}>📊 Conexión Google Sheets</h3>
-            <p style={{fontSize:12,color:"#95A5A6",marginBottom:14,lineHeight:1.5}}>Pega la URL de tu Apps Script. Los datos se leen y guardan en tu hoja.</p>
-            <div style={{display:"flex",gap:8}}>
-              <Input placeholder="https://script.google.com/macros/s/.../exec" value={urlInput} onChange={e=>setUrlInput(e.target.value)} style={{flex:1,fontSize:12}} />
-              <Btn onClick={saveUrl} small>{saved?"✅":"Guardar"}</Btn>
-            </div>
-            {sheetUrl && (
-              <div style={{marginTop:12,display:"flex",gap:8,alignItems:"center"}}>
-                <Btn variant="secondary" small onClick={()=>onReload(sheetUrl)}>🔄 Recargar datos</Btn>
-                <span style={{fontSize:12,color:"#27AE60"}}>✓ Conectado</span>
+                <div style={{fontSize:14,color:"#2C3E50",lineHeight:1.5}}>{s.comentario}</div>
+                {s.autor&&<div style={{fontSize:12,color:"#95A5A6",marginTop:2}}>— {s.autor}</div>}
               </div>
-            )}
-          </div>
+            );
+          })}
+        </div>
+      </div>
 
-          <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB"}}>
-            <h3 style={{margin:"0 0 10px",fontSize:15,color:"#1B4F72"}}>📝 Conductores, PPU y correos</h3>
-            <p style={{fontSize:13,color:"#5D6D7E",lineHeight:1.6}}>Se administran en tu <strong>Google Sheet</strong>, hoja <strong>"Config"</strong>:</p>
-            <div style={{background:"#F8F9F9",borderRadius:8,padding:16,marginTop:10,fontSize:13,fontFamily:"monospace",lineHeight:1.8,color:"#2C3E50"}}>
-              <div><span style={{color:"#7F8C8D"}}>Columna A</span> → tipo: <strong>conductor</strong> / <strong>ppu</strong> / <strong>email</strong></div>
-              <div><span style={{color:"#7F8C8D"}}>Columna B</span> → valor (nombre, patente o correo)</div>
-            </div>
-            <p style={{fontSize:12,color:"#95A5A6",marginTop:10}}>Después de modificar la hoja, presiona <strong>"Recargar datos"</strong> arriba.</p>
+      {/* Add entry */}
+      {(ticket.estado||"Abierto")!=="Resuelto"&&(
+        <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB"}}>
+          <h3 style={{margin:"0 0 16px",fontSize:16,color:"#1B4F72"}}>➕ Agregar actualización</h3>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <Input label="Autor" placeholder="Tu nombre..." value={autor} onChange={e=>setAutor(e.target.value)}/>
+            <Sel label="Nuevo estado" value={nuevoEstado} onChange={e=>setNuevoEstado(e.target.value)}>
+              {ESTADOS.map(s=><option key={s.id} value={s.id}>{s.icon} {s.id}</option>)}
+            </Sel>
+          </div>
+          <TArea label="Comentario" placeholder="Describe qué se hizo o qué falta..." value={comentario} onChange={e=>setComentario(e.target.value)}/>
+          <div style={{marginTop:16,display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10}}>
+            {sending&&<Spinner text="Guardando..."/>}
+            <Btn disabled={!comentario.trim()||sending} onClick={submit}>Registrar avance</Btn>
           </div>
         </div>
-      );
-    }
-
-    // ═══════════════════════════════════════════
-    // SETUP SCREEN
-    // ═══════════════════════════════════════════
-    function SetupScreen({onSetUrl}) {
-      const [url,setUrl] = useState("");
-      return (
-        <div style={{maxWidth:520,margin:"60px auto",background:"#fff",borderRadius:14,padding:36,border:"1px solid #E5E8EB",boxShadow:"0 4px 20px rgba(0,0,0,0.04)"}}>
-          <div style={{textAlign:"center",marginBottom:28}}>
-            <div style={{fontSize:56,marginBottom:12}}>🚚</div>
-            <h1 style={{margin:0,fontSize:24,color:"#1B4F72",fontWeight:800}}>Gestión de Flota</h1>
-            <p style={{fontSize:14,color:"#7F8C8D",marginTop:8}}>Sistema de tickets de incidencias</p>
-          </div>
-          <div style={{background:"#EBF5FB",borderRadius:10,padding:18,marginBottom:20,fontSize:13,color:"#1B4F72",lineHeight:1.6}}>
-            <strong>Primer paso:</strong> conecta tu Google Sheet. Crea la hoja, despliega el Apps Script y pega la URL aquí.
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <Input label="URL del Apps Script" placeholder="https://script.google.com/macros/s/.../exec" value={url} onChange={e=>setUrl(e.target.value)} />
-            <Btn disabled={!url.trim().startsWith("https://")} onClick={()=>onSetUrl(url.trim())} style={{width:"100%",justifyContent:"center"}}>🔗 Conectar y comenzar</Btn>
-          </div>
+      )}
+      {(ticket.estado||"Abierto")==="Resuelto"&&(
+        <div style={{background:"#D5F5E3",borderRadius:14,padding:20,textAlign:"center",fontSize:14,color:"#1E8449",fontWeight:600}}>
+          ✅ Este caso fue resuelto
         </div>
-      );
-    }
+      )}
+    </div>
+  );
+}
 
-    // ═══════════════════════════════════════════
-    // MAIN APP
-    // ═══════════════════════════════════════════
-    function App() {
-      const [tab,setTab] = useState("tickets");
-      const [tickets,setTickets] = useState([]);
-      const [config,setConfig] = useState({conductores:[],ppuList:[],emails:[]});
-      const [editing,setEditing] = useState(null);
-      const [sheetUrl,setSheetUrl] = useState(localStorage.getItem(LS_URL)||"");
-      const [adminPass,setAdminPass] = useState(localStorage.getItem(LS_PASS)||"");
-      const [loading,setLoading] = useState(false);
-      const [saving,setSaving] = useState(false);
-      const [toast,setToast] = useState(null);
-      const [error,setError] = useState(null);
-      const [ready,setReady] = useState(false);
+// ═══════════════════════════════════
+// TICKET LIST
+// ═══════════════════════════════════
+function TicketList({tickets,onEdit,onDelete,onView,loading}){
+  const[search,setSearch]=useState("");
+  const[filterEstado,setFilterEstado]=useState("todos");
+  const filtered=tickets.filter(t=>{
+    const matchSearch=[t.supervisor,t.conductor,t.ppu,t.tipo,t.subtipo].join(" ").toLowerCase().includes(search.toLowerCase());
+    const matchEstado=filterEstado==="todos"||(t.estado||"Abierto")===filterEstado;
+    return matchSearch&&matchEstado;
+  });
 
-      const showToast = (msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
+  if(loading)return<Spinner text="Cargando incidencias..."/>;
+  if(tickets.length===0)return<div style={{textAlign:"center",padding:60,color:"#95A5A6"}}><div style={{fontSize:48,marginBottom:12}}>📭</div><p>No hay incidencias aún</p></div>;
 
-      const loadFromSheet = useCallback(async (url) => {
-        if(!url)return;
-        setLoading(true);setError(null);
-        try {
-          const [all,cfg] = await Promise.all([gGet(url,"getAll"),gGet(url,"getConfig")]);
-          setTickets(Array.isArray(all)?all:[]);
-          if(cfg && !cfg.error) setConfig(cfg);
-        } catch(e) {
-          setError("No se pudo conectar. Verifica la URL y que el script esté desplegado.");
-        }
-        setLoading(false);
-      },[]);
-
-      useEffect(()=>{
-        if(sheetUrl) loadFromSheet(sheetUrl);
-        setReady(true);
-      },[]);
-
-      const handleSave = useCallback(async (ticket)=>{
-        if(!sheetUrl)return;
-        setSaving(true);
-        try {
-          const isNew=!editing;
-          const res = await gPost(sheetUrl,{action:isNew?"create":"update",ticket});
-          if(res.success){
-            showToast(isNew?"✅ Ticket creado y correo enviado":"✅ Actualizado");
-            setEditing(null);
-            await loadFromSheet(sheetUrl);
-          } else showToast("❌ "+(res.error||"Error"),"danger");
-        } catch(e){ showToast("❌ Error de conexión","danger"); }
-        setSaving(false);
-      },[sheetUrl,editing,loadFromSheet]);
-
-      const handleDelete = useCallback(async (id)=>{
-        if(!confirm("¿Eliminar esta incidencia?"))return;
-        try {
-          const res = await gPost(sheetUrl,{action:"delete",id});
-          if(res.success){showToast("🗑️ Eliminada","danger");await loadFromSheet(sheetUrl);}
-        } catch(e){showToast("❌ Error","danger");}
-      },[sheetUrl,loadFromSheet]);
-
-      const handleEdit = t=>{setEditing(t);setTab("tickets");window.scrollTo({top:0,behavior:"smooth"});};
-      const handleSetUrl = url=>{localStorage.setItem(LS_URL,url);setSheetUrl(url);loadFromSheet(url);};
-
-      if(!ready) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh"}}><Spinner text="Cargando..." /></div>;
-
-      if(!sheetUrl) return <SetupScreen onSetUrl={handleSetUrl} />;
-
-      const tabs = [
-        {id:"tickets",label:"📋 Tickets",count:tickets.length},
-        {id:"dashboard",label:"📊 Dashboard"},
-        {id:"config",label:"🔐 Config"},
-      ];
-
-      return (
-        <div>
-          {/* Header */}
-          <div style={{background:"linear-gradient(135deg,#1B4F72,#154360)",color:"#fff",padding:"20px 28px"}}>
-            <div style={{maxWidth:960,margin:"0 auto"}}>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
-                <span style={{fontSize:26}}>🚚</span>
-                <h1 style={{margin:0,fontSize:22,fontWeight:800,letterSpacing:-0.5}}>Gestión de Flota</h1>
+  return(
+    <div>
+      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <Input placeholder="🔍 Buscar..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:200}}/>
+        <Sel value={filterEstado} onChange={e=>setFilterEstado(e.target.value)} style={{minWidth:160}}>
+          <option value="todos">Todos los estados</option>
+          {ESTADOS.map(s=><option key={s.id} value={s.id}>{s.icon} {s.id}</option>)}
+        </Sel>
+        <span style={{fontSize:13,color:"#7F8C8D"}}>{filtered.length} de {tickets.length}</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {filtered.sort((a,b)=>String(b.id).localeCompare(String(a.id))).map(t=>{
+          const tp=TYPES[t.tipo];
+          return(
+            <div key={t.id} className="fi" style={{background:"#fff",borderRadius:12,padding:"16px 20px",border:"1px solid #E5E8EB",display:"flex",alignItems:"flex-start",gap:14,cursor:"pointer",transition:"box-shadow .15s"}} onClick={()=>onView(t)} onMouseOver={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.06)"} onMouseOut={e=>e.currentTarget.style.boxShadow="none"}>
+              <div style={{width:42,height:42,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,background:(tp?.color||"#999")+"15",flexShrink:0}}>{tp?.icon||"📋"}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                  <span style={{fontWeight:700,fontSize:14,color:"#2C3E50"}}>{t.ppu}</span>
+                  <Badge color={tp?.color||"#999"}>{tp?.label}</Badge>
+                  <StatusBadge estado={t.estado||"Abierto"}/>
+                  <span style={{fontSize:12,color:"#95A5A6"}}>{fmtDate(t.fecha)}</span>
+                </div>
+                <div style={{fontSize:13,color:"#5D6D7E"}}>
+                  <strong>Sup:</strong> {t.supervisor} · <strong>Cond:</strong> {t.conductor}
+                  {t.subtipo&&<span> · {t.subtipo}</span>}
+                </div>
               </div>
-              <p style={{margin:0,fontSize:13,opacity:0.7}}>Sistema de tickets de incidencias</p>
+              <div style={{display:"flex",gap:6,flexShrink:0}} onClick={e=>e.stopPropagation()}>
+                <Btn variant="ghost" small onClick={()=>onView(t)}>📋</Btn>
+                <Btn variant="ghost" small onClick={()=>onEdit(t)}>✏️</Btn>
+                <Btn variant="ghost" small onClick={()=>onDelete(t.id)}>🗑️</Btn>
+              </div>
             </div>
-          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
-          {/* Tabs */}
-          <div style={{background:"#fff",borderBottom:"1px solid #E5E8EB",position:"sticky",top:0,zIndex:10}}>
-            <div style={{maxWidth:960,margin:"0 auto",display:"flex"}}>
-              {tabs.map(t=>(
-                <button key={t.id} onClick={()=>{setTab(t.id);setEditing(null);}} style={{
-                  padding:"14px 22px",border:"none",background:"none",cursor:"pointer",
-                  fontSize:14,fontWeight:600,color:tab===t.id?"#1B4F72":"#95A5A6",
-                  borderBottom:tab===t.id?"3px solid #1B4F72":"3px solid transparent",
-                  transition:"all .15s",display:"flex",alignItems:"center",gap:6,
-                }}>
-                  {t.label}
-                  {t.count!==undefined&&<span style={{background:tab===t.id?"#1B4F72":"#BDC3C7",color:"#fff",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>{t.count}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
+// ═══════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════
+function Dashboard({tickets}){
+  const today=new Date().toISOString().slice(0,10);
+  const ma=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const[desde,setDesde]=useState(ma);const[hasta,setHasta]=useState(today);
+  const filtered=tickets.filter(t=>t.fecha>=desde&&t.fecha<=hasta);const total=filtered.length;
+  const byType=useMemo(()=>{const m={};filtered.forEach(t=>{m[t.tipo]=(m[t.tipo]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])},[filtered]);
+  const byDriver=useMemo(()=>{const m={};filtered.forEach(t=>{if(t.conductor)m[t.conductor]=(m[t.conductor]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])},[filtered]);
+  const byPPU=useMemo(()=>{const m={};filtered.forEach(t=>{m[t.ppu]=(m[t.ppu]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])},[filtered]);
+  const byEstado=useMemo(()=>{const m={};filtered.forEach(t=>{const e=t.estado||"Abierto";m[e]=(m[e]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])},[filtered]);
 
-          {/* Content */}
-          <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px"}}>
-            {error && (
-              <div style={{background:"#FDEDEC",border:"1px solid #F5B7B1",borderRadius:10,padding:16,marginBottom:18,fontSize:13,color:"#922B21"}}>
-                ❌ {error}
-                <Btn variant="ghost" small onClick={()=>{setError(null);loadFromSheet(sheetUrl);}} style={{marginLeft:12}}>Reintentar</Btn>
-              </div>
-            )}
-            {tab==="tickets" && (
-              <div style={{display:"flex",flexDirection:"column",gap:24}}>
-                <TicketForm onSave={handleSave} editing={editing} onCancel={()=>setEditing(null)} config={config} saving={saving} />
-                <TicketList tickets={tickets} onEdit={handleEdit} onDelete={handleDelete} loading={loading} />
-              </div>
-            )}
-            {tab==="dashboard" && <Dashboard tickets={tickets} />}
-            {tab==="config" && <ConfigPanel sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} adminPass={adminPass} setAdminPass={setAdminPass} onReload={loadFromSheet} />}
-          </div>
+  const Bar=({label,count,total:tot,color})=>{const pct=tot>0?(count/tot*100):0;return(<div style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span style={{fontWeight:600,color:"#2C3E50"}}>{label}</span><span style={{color:"#7F8C8D"}}>{count} ({pct.toFixed(1)}%)</span></div><div style={{height:10,background:"#ECF0F1",borderRadius:5,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:color||"#1B4F72",borderRadius:5,transition:"width .4s ease"}}/></div></div>)};
+  const Stat=({icon,label,value,sub})=>(<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid #E5E8EB",textAlign:"center"}}><div style={{fontSize:28,marginBottom:6}}>{icon}</div><div style={{fontSize:28,fontWeight:800,color:"#1B4F72"}}>{value}</div><div style={{fontSize:12,color:"#7F8C8D",fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{label}</div>{sub&&<div style={{fontSize:11,color:"#95A5A6",marginTop:2}}>{sub}</div>}</div>);
 
-          {/* Toast */}
-          {toast && (
-            <div style={{
-              position:"fixed",bottom:24,right:24,
-              background:toast.type==="danger"?"#E74C3C":"#27AE60",
-              color:"#fff",padding:"12px 22px",borderRadius:10,fontSize:14,fontWeight:600,
-              boxShadow:"0 4px 20px rgba(0,0,0,0.12)",animation:"slideIn .3s ease",zIndex:100
-            }}>{toast.msg}</div>
-          )}
+  const tT=byType[0],tD=byDriver[0];
+  const abiertos=filtered.filter(t=>(t.estado||"Abierto")!=="Resuelto").length;
+
+  return(
+    <div className="fi">
+      <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB",marginBottom:20}}>
+        <h3 style={{margin:"0 0 14px",fontSize:15,color:"#1B4F72"}}>📅 Período</h3>
+        <div style={{display:"flex",gap:16,alignItems:"end",flexWrap:"wrap"}}>
+          <Input label="Desde" type="date" value={desde} onChange={e=>setDesde(e.target.value)}/>
+          <Input label="Hasta" type="date" value={hasta} onChange={e=>setHasta(e.target.value)}/>
+          <span style={{fontSize:13,color:"#7F8C8D",paddingBottom:10}}>{total} incidencias</span>
         </div>
-      );
-    }
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14,marginBottom:20}}>
+        <Stat icon="📊" label="Total" value={total} sub={fmtDate(desde)+" — "+fmtDate(hasta)}/>
+        <Stat icon="🔴" label="Pendientes" value={abiertos}/>
+        <Stat icon="✅" label="Resueltos" value={total-abiertos}/>
+        <Stat icon="🚗" label="PPUs" value={byPPU.length}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>📈 Por Tipo</h3>{byType.length===0&&<p style={{color:"#95A5A6",fontSize:13}}>Sin datos</p>}{byType.map(([t,c])=><Bar key={t} label={TYPES[t]?.icon+" "+TYPES[t]?.label} count={c} total={total} color={TYPES[t]?.color}/>)}</div>
+        <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>👤 Por Conductor</h3>{byDriver.length===0&&<p style={{color:"#95A5A6",fontSize:13}}>Sin datos</p>}{byDriver.map(([n,c])=><Bar key={n} label={n} count={c} total={total} color="#1B4F72"/>)}</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginTop:16}}>
+        <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>🚗 Por PPU</h3>{byPPU.map(([p,c])=><Bar key={p} label={p} count={c} total={total} color="#2E86C1"/>)}</div>
+        <div style={{background:"#fff",borderRadius:14,padding:22,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 16px",fontSize:15,color:"#1B4F72"}}>📊 Por Estado</h3>{byEstado.map(([e,c])=>{const s=ESTADOS.find(x=>x.id===e);return<Bar key={e} label={(s?.icon||"")+" "+e} count={c} total={total} color={s?.color}/>})}</div>
+      </div>
+    </div>
+  );
+}
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-  </script>
+// ═══════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════
+function ConfigPanel({adminPass,setAdminPass,onReload}){
+  const[unlocked,setUnlocked]=useState(false);const[passInput,setPassInput]=useState("");const[confirmPass,setConfirmPass]=useState("");const[passError,setPassError]=useState("");const isFirst=!adminPass;
+  const handleUnlock=()=>{if(isFirst){if(passInput.length<4){setPassError("Mínimo 4 caracteres");return}if(passInput!==confirmPass){setPassError("No coinciden");return}localStorage.setItem(LS_PASS,passInput);setAdminPass(passInput);setUnlocked(true);setPassError("")}else{if(passInput===adminPass){setUnlocked(true);setPassError("")}else setPassError("Contraseña incorrecta")}};
+  const kd=e=>{if(e.key==="Enter")handleUnlock()};
+
+  if(!unlocked)return(
+    <div style={{maxWidth:420,margin:"40px auto",background:"#fff",borderRadius:14,padding:32,border:"1px solid #E5E8EB",boxShadow:"0 4px 20px rgba(0,0,0,.04)"}}>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontSize:48,marginBottom:8}}>🔐</div><h2 style={{margin:0,fontSize:20,color:"#1B4F72"}}>{isFirst?"Crear contraseña":"Acceso restringido"}</h2><p style={{fontSize:13,color:"#95A5A6",marginTop:6}}>{isFirst?"Solo tú podrás modificar esto.":"Ingresa tu contraseña."}</p></div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Input label={isFirst?"Nueva contraseña":"Contraseña"} type="password" placeholder="••••••" value={passInput} onChange={e=>{setPassInput(e.target.value);setPassError("")}} onKeyDown={kd}/>
+        {isFirst&&<Input label="Confirmar" type="password" placeholder="••••••" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassError("")}} onKeyDown={kd}/>}
+        {passError&&<div style={{color:"#E74C3C",fontSize:13,fontWeight:600}}>❌ {passError}</div>}
+        <Btn onClick={handleUnlock} style={{width:"100%",justifyContent:"center"}}>{isFirst?"🔑 Crear y entrar":"🔓 Desbloquear"}</Btn>
+      </div>
+    </div>
+  );
+
+  return(
+    <div className="fi" style={{display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{background:"#D5F5E3",borderRadius:10,padding:"10px 18px",fontSize:13,color:"#1E8449",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>🔓 Admin activo<Btn variant="ghost" small onClick={()=>{setUnlocked(false);setPassInput("")}} style={{marginLeft:"auto",color:"#7F8C8D"}}>Cerrar sesión</Btn></div>
+      <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 6px",fontSize:15,color:"#1B4F72"}}>📊 Google Sheets</h3><p style={{fontSize:13,color:"#5D6D7E",marginBottom:14}}>La página está conectada automáticamente a tu Google Sheet.</p><Btn variant="secondary" small onClick={onReload}>🔄 Recargar datos</Btn></div>
+      <div style={{background:"#fff",borderRadius:14,padding:24,border:"1px solid #E5E8EB"}}><h3 style={{margin:"0 0 10px",fontSize:15,color:"#1B4F72"}}>📝 Conductores, PPU y correos</h3><p style={{fontSize:13,color:"#5D6D7E",lineHeight:1.6}}>Se administran en tu Google Sheet, hoja <strong>"Config"</strong>.</p><div style={{background:"#F8F9F9",borderRadius:8,padding:16,marginTop:10,fontSize:13,fontFamily:"monospace",lineHeight:1.8,color:"#2C3E50"}}><div>Columna A → <strong>conductor</strong> / <strong>ppu</strong> / <strong>email</strong></div><div>Columna B → nombre, patente o correo</div></div><p style={{fontSize:12,color:"#95A5A6",marginTop:10}}>Después de modificar, presiona <strong>"Recargar datos"</strong> arriba.</p></div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════
+function App(){
+  const[tab,setTab]=useState("tickets");
+  const[tickets,setTickets]=useState([]);
+  const[allSeg,setAllSeg]=useState([]);
+  const[config,setConfig]=useState({conductores:[],ppuList:[],emails:[]});
+  const[editing,setEditing]=useState(null);
+  const[viewing,setViewing]=useState(null);
+  const[viewSeg,setViewSeg]=useState([]);
+  const[loadingSeg,setLoadingSeg]=useState(false);
+  const[adminPass,setAdminPass]=useState(localStorage.getItem(LS_PASS)||"");
+  const[loading,setLoading]=useState(false);const[saving,setSaving]=useState(false);
+  const[toast,setToast]=useState(null);const[error,setError]=useState(null);const[ready,setReady]=useState(false);
+
+  const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3500)};
+
+  const loadFromSheet=useCallback(async()=>{
+    setLoading(true);setError(null);
+    try{
+      const[all,cfg,seg]=await Promise.all([gGet(SHEET_API,"getAll"),gGet(SHEET_API,"getConfig"),gGet(SHEET_API,"getAllSeguimiento")]);
+      setTickets(Array.isArray(all)?all:[]);
+      if(cfg&&!cfg.error)setConfig(cfg);
+      setAllSeg(Array.isArray(seg)?seg:[]);
+    }catch(e){setError("No se pudo conectar con Google Sheets.")}
+    setLoading(false);
+  },[]);
+
+  const loadSeguimiento=useCallback(async(ticketId)=>{
+    setLoadingSeg(true);
+    try{const r=await gGet(SHEET_API,"getSeguimiento","&ticketId="+ticketId);setViewSeg(Array.isArray(r)?r:[]);}catch{}
+    setLoadingSeg(false);
+  },[]);
+
+  useEffect(()=>{loadFromSheet();setReady(true)},[]);
+
+  const handleSave=useCallback(async(ticket)=>{
+    setSaving(true);
+    try{const isNew=!editing;const res=await gPost(SHEET_API,{action:isNew?"create":"update",ticket});
+      if(res.success){showToast(isNew?"✅ Ticket creado y correo enviado":"✅ Actualizado");setEditing(null);await loadFromSheet()}
+      else showToast("❌ "+(res.error||"Error"),"danger");
+    }catch{showToast("❌ Error de conexión","danger")}setSaving(false);
+  },[editing,loadFromSheet]);
+
+  const handleDelete=useCallback(async(id)=>{
+    if(!confirm("¿Eliminar?"))return;
+    try{const res=await gPost(SHEET_API,{action:"delete",id});if(res.success){showToast("🗑️ Eliminada","danger");await loadFromSheet()}}catch{showToast("❌ Error","danger")}
+  },[loadFromSheet]);
+
+  const handleView=(ticket)=>{setViewing(ticket);loadSeguimiento(ticket.id)};
+  const handleBack=()=>{setViewing(null);loadFromSheet()};
+  const handleEdit=t=>{setEditing(t);setViewing(null);setTab("tickets");window.scrollTo({top:0,behavior:"smooth"})};
+
+  const handleAddSeg=useCallback(async(entry)=>{
+    try{const res=await gPost(SHEET_API,{action:"addSeguimiento",entry});
+      if(res.success){showToast("✅ Avance registrado");await loadSeguimiento(entry.ticketId);
+        setViewing(v=>v?{...v,estado:entry.nuevoEstado}:v);
+      }
+    }catch{showToast("❌ Error","danger")}
+  },[loadSeguimiento]);
+
+  if(!ready)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh"}}><Spinner text="Cargando..."/></div>;
+
+  const tabs=[{id:"tickets",label:"📋 Tickets",count:tickets.length},{id:"dashboard",label:"📊 Dashboard"},{id:"config",label:"🔐 Config"}];
+
+  return(
+    <div>
+      <div style={{background:"linear-gradient(135deg,#1B4F72,#154360)",color:"#fff",padding:"20px 28px"}}>
+        <div style={{maxWidth:960,margin:"0 auto"}}><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}><span style={{fontSize:26}}>🚚</span><h1 style={{margin:0,fontSize:22,fontWeight:800,letterSpacing:-.5}}>Gestión de Flota</h1></div><p style={{margin:0,fontSize:13,opacity:.7}}>Sistema de tickets de incidencias</p></div>
+      </div>
+      <div style={{background:"#fff",borderBottom:"1px solid #E5E8EB",position:"sticky",top:0,zIndex:10}}>
+        <div style={{maxWidth:960,margin:"0 auto",display:"flex"}}>
+          {tabs.map(t=><button key={t.id} onClick={()=>{setTab(t.id);setEditing(null);setViewing(null)}} style={{padding:"14px 22px",border:"none",background:"none",cursor:"pointer",fontSize:14,fontWeight:600,color:tab===t.id?"#1B4F72":"#95A5A6",borderBottom:tab===t.id?"3px solid #1B4F72":"3px solid transparent",transition:"all .15s",display:"flex",alignItems:"center",gap:6}}>{t.label}{t.count!==undefined&&<span style={{background:tab===t.id?"#1B4F72":"#BDC3C7",color:"#fff",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>{t.count}</span>}</button>)}
+        </div>
+      </div>
+      <div style={{maxWidth:960,margin:"0 auto",padding:"24px 16px"}}>
+        {error&&<div style={{background:"#FDEDEC",border:"1px solid #F5B7B1",borderRadius:10,padding:16,marginBottom:18,fontSize:13,color:"#922B21"}}>❌ {error}<Btn variant="ghost" small onClick={()=>{setError(null);loadFromSheet()}} style={{marginLeft:12}}>Reintentar</Btn></div>}
+        {tab==="tickets"&&!viewing&&(
+          <div style={{display:"flex",flexDirection:"column",gap:24}}>
+            <TicketForm onSave={handleSave} editing={editing} onCancel={()=>setEditing(null)} config={config} saving={saving}/>
+            <TicketList tickets={tickets} onEdit={handleEdit} onDelete={handleDelete} onView={handleView} loading={loading}/>
+          </div>
+        )}
+        {tab==="tickets"&&viewing&&<TicketDetail ticket={viewing} seguimiento={viewSeg} onBack={handleBack} onAddSeg={handleAddSeg} loadingSeg={loadingSeg}/>}
+        {tab==="dashboard"&&<Dashboard tickets={tickets}/>}
+        {tab==="config"&&<ConfigPanel adminPass={adminPass} setAdminPass={setAdminPass} onReload={loadFromSheet}/>}
+      </div>
+      {toast&&<div style={{position:"fixed",bottom:24,right:24,background:toast.type==="danger"?"#E74C3C":"#27AE60",color:"#fff",padding:"12px 22px",borderRadius:10,fontSize:14,fontWeight:600,boxShadow:"0 4px 20px rgba(0,0,0,.12)",animation:"slideIn .3s ease",zIndex:100}}>{toast.msg}</div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
 </body>
 </html>
